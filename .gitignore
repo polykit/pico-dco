@@ -24,3 +24,5 @@ fp-info-cache
 *.ses
 
 /build/*
+
+*.log

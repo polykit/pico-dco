@@ -39,3 +39,5 @@ https://github.com/raspberrypi/pico-examples/tree/master/pwm/hello_pwm
 https://qiita.com/jamjam/items/f2fdd5c072ff348fd809
 
 https://github.com/infovore/pico-example-midi
+
+https://learn.sparkfun.com/tutorials/midi-tutorial/all

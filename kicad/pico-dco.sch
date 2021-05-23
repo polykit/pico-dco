@@ -149,17 +149,6 @@ PW_POT
 Wire Wire Line
 	6700 4850 6850 4850
 $Comp
-L Regulator_Linear:L78L05_TO92 U1
-U 1 1 60963782
-P 1900 6400
-F 0 "U1" H 1900 6642 50  0000 C CNN
-F 1 "L78L05_TO92" H 1900 6551 50  0000 C CNN
-F 2 "Package_TO_SOT_THT:TO-92_Wide" H 1900 6625 50  0001 C CIN
-F 3 "http://www.st.com/content/ccc/resource/technical/document/datasheet/15/55/e5/aa/23/5b/43/fd/CD00000446.pdf/files/CD00000446.pdf/jcr:content/translations/en.CD00000446.pdf" H 1900 6350 50  0001 C CNN
-	1    1900 6400
-	1    0    0    -1  
-$EndComp
-$Comp
 L power:GND #PWR0114
 U 1 1 60964D2D
 P 1900 6700
@@ -822,6 +811,17 @@ F 1 "Conn_01x10" H 3830 3701 50  0001 L CNN
 F 2 "Connector_PinHeader_2.54mm:PinHeader_1x10_P2.54mm_Vertical" H 3750 3800 50  0001 C CNN
 F 3 "~" H 3750 3800 50  0001 C CNN
 	1    3750 3800
+	1    0    0    -1  
+$EndComp
+$Comp
+L Regulator_Linear:L7805 U?
+U 1 1 61096C61
+P 1900 6400
+F 0 "U?" H 1900 6642 50  0000 C CNN
+F 1 "L7805" H 1900 6551 50  0000 C CNN
+F 2 "Package_TO_SOT_THT:TO-220-3_Vertical" H 1925 6250 50  0001 L CIN
+F 3 "http://www.st.com/content/ccc/resource/technical/document/datasheet/41/4f/b3/b0/12/d4/47/88/CD00000444.pdf/files/CD00000444.pdf/jcr:content/translations/en.CD00000444.pdf" H 1900 6350 50  0001 C CNN
+	1    1900 6400
 	1    0    0    -1  
 $EndComp
 $EndSCHEMATC

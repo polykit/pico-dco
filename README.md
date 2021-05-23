@@ -1,12 +1,14 @@
-# Raspberry Pi Pico DCO
+# Raspberry Pi Pico Polyphonic DCO
 
-This repository contains source code and schematics for a digitally controlled oscillator (DCO) which is driven by a Raspberry Pi Pico. It uses PIO to generate a highly accurate frequency which is controlled by MIDI USB. The analog oscillator part is based on the Juno 106 and generates sawtooth and square wave signal with a 10Vpp amplitude. Amplitude compensation is done by a smoothed PWM signal coming from the Pico.
+This repository contains source code, schematics and PCB for a digitally controlled oscillator (DCO) with up to 6 voices which are driven by a Raspberry Pi Pico. It uses PIO to generate a highly accurate frequency which is controlled by USB or serial MIDI. The analog oscillator part is based on the Juno 106 and generates sawtooth and square wave signal with a 10Vpp amplitude. Amplitude compensation is done by a smoothed PWM signal coming from the Pico.
 
-This is how it sounds: [Ramp sample](https://soundcloud.com/polykit/pico-dco-ramp) [Pulse sample](https://soundcloud.com/polykit/pico-dco-pulse)
+This is how it sounds: [Ramp sample](https://soundcloud.com/polykit/pico-dco-ramp) [Pulse sample](https://soundcloud.com/polykit/pico-dco-pulse) [Polyphonic sample](https://soundcloud.com/polykit/pico-dco-polyphonic)
 
-## Schematics
+## Schematics and PCB
 
 ![Raspberry Pi Pico DCO](pico-dco.png)
+
+![Raspberry Pi Pico DCO PCB](pico-dco-pcb.png)
 
 ## Installing (simple)
 
@@ -14,13 +16,11 @@ Press `BOOTSEL` button on the Pico while powering it with USB. Copy file `build/
 
 ## Usage
 
-After installing the Pico should register as USB MIDI device. The DCO listens to note on/note off messages on MIDI channel 1.
+After installing the Pico should register as USB MIDI device. Alternatively serial MIDI input is available. The DCO listens to note on/note off messages on MIDI channel 1.
 
-## Todo
+## Known issues
 
-- Add DIN MIDI input
-- Add polyphony (up to 8 voices should be possible)
-- Add velocity and pitch bend output (additional DAC needed)
+- USB MIDI apparently looses notes while playing. This seems to be caused by the TinyUSB library included in the Raspberry Pi Pico SDK. Hopefully this will be fixed in a future release.
 
 ## References
 

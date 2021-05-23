@@ -10,13 +10,15 @@
 #include "tusb.h"
 #include "hardware/uart.h"
 
-#define NUM_VOICES 1
+#define NUM_VOICES 6
 #define MIDI_CHANNEL 1
 
 const float BASE_NOTE = 440.0f;
-const uint8_t OUT_PINS[NUM_VOICES] = {2};
-const uint8_t RANGE_PINS[NUM_VOICES] = {3};
-const uint8_t GATE_PINS[NUM_VOICES] = {4};
+const uint8_t RESET_PINS[NUM_VOICES] = {13, 8, 12, 9, 11, 10};
+const uint8_t RANGE_PINS[NUM_VOICES] = {16, 19, 15, 18, 14, 17};
+const uint8_t GATE_PINS[NUM_VOICES] = {2, 3, 4, 5, 6, 7};
+const uint8_t VOICE_TO_PIO[NUM_VOICES] = {0, 0, 0, 0, 1, 1};
+const uint8_t VOICE_TO_SM[NUM_VOICES] = {0, 1, 2, 3, 0, 1};
 const uint16_t DIV_COUNTER = 1250;
 uint8_t RANGE_PWM_SLICES[NUM_VOICES];
 uint8_t NOTES[128];
@@ -58,9 +60,11 @@ int main() {
     }
 
     // pio init
+    uint offset[2];
+    offset[0] = pio_add_program(pio[0], &frequency_program);
+    offset[1] = pio_add_program(pio[1], &frequency_program);
     for (int i=0; i<NUM_VOICES; i++) {
-        uint offset = pio_add_program(pio[0], &frequency_program);
-        init_sm(pio[0], i, offset, OUT_PINS[i]);
+        init_sm(pio[VOICE_TO_PIO[i]], VOICE_TO_SM[i], offset[VOICE_TO_PIO[i]], RESET_PINS[i]);
     }
 
     // gate gpio init
@@ -84,7 +88,9 @@ void init_sm(PIO pio, uint sm, uint offset, uint pin) {
 }
 
 void set_frequency(PIO pio, uint sm, float freq) {
-    pio_sm_put(pio, sm, clock_get_hz(clk_sys) / 2 / freq);
+    uint32_t clk_div = clock_get_hz(clk_sys) / 2 / freq;
+    if (freq == 0) clk_div = 0;
+    pio_sm_put(pio, sm, clk_div);
     pio_sm_exec(pio, sm, pio_encode_pull(false, false));
     pio_sm_exec(pio, sm, pio_encode_out(pio_y, 32));
 }
@@ -148,10 +154,11 @@ void serial_midi_task() {
 }
 
 void note_on(uint8_t note, uint8_t velocity) {
+    if (NOTES[note] > 0) return; // note already playing
     uint8_t voice_num = get_free_voice();
     NOTES[note] = voice_num;
     float freq = get_freq_from_midi_note(note);
-    set_frequency(pio[0], voice_num, freq);
+    set_frequency(pio[VOICE_TO_PIO[voice_num]], VOICE_TO_SM[voice_num], freq);
     // amplitude adjustment
     pwm_set_chan_level(RANGE_PWM_SLICES[voice_num], pwm_gpio_to_channel(RANGE_PINS[voice_num]), (int)(DIV_COUNTER*(freq*0.00025f-1/(100*freq))));
     // gate on
@@ -162,12 +169,23 @@ void note_off(uint8_t note) {
     // gate off
     gpio_put(GATE_PINS[NOTES[note]], 0);
     VOICES[NOTES[note]] = 0;
+    NOTES[note] = 0;
 }
 
 uint8_t get_free_voice() {
-    uint8_t voice = 0;
-    VOICES[voice] = board_millis();
-    return voice;
+    uint32_t oldest_time = board_millis();
+    uint8_t oldest_voice = 0;
+    for (int i=0; i<NUM_VOICES; i++) {
+        if (VOICES[i] == 0) {
+            VOICES[i] = board_millis();
+            return i;
+        }
+        if (VOICES[i]<oldest_time) {
+            oldest_time = VOICES[i];
+            oldest_voice = i;
+        }
+    }
+    return oldest_voice;
 }
 
 void led_blinking_task(void) {

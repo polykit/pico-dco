@@ -23,6 +23,7 @@ const uint16_t DIV_COUNTER = 1250;
 uint8_t RANGE_PWM_SLICES[NUM_VOICES];
 uint8_t NOTES[128];
 uint32_t VOICES[NUM_VOICES];
+uint8_t NEXT_VOICE = 0;
 uint32_t LED_BLINK_START = 0;
 PIO pio[2] = {pio0, pio1};
 uint8_t midi_serial_status = 0;
@@ -71,6 +72,11 @@ int main() {
     for (int i=0; i<NUM_VOICES; i++) {
         gpio_init(GATE_PINS[i]);
         gpio_set_dir(GATE_PINS[i], GPIO_OUT);
+    }
+
+    // init voices
+    for (int i=0; i<NUM_VOICES; i++) {
+        VOICES[i] = 0;
     }
 
     while (1) {
@@ -157,6 +163,7 @@ void note_on(uint8_t note, uint8_t velocity) {
     if (NOTES[note] > 0) return; // note already playing
     uint8_t voice_num = get_free_voice();
     NOTES[note] = voice_num;
+    VOICES[voice_num] = board_millis();
     float freq = get_freq_from_midi_note(note);
     set_frequency(pio[VOICE_TO_PIO[voice_num]], VOICE_TO_SM[voice_num], freq);
     // amplitude adjustment
@@ -175,16 +182,21 @@ void note_off(uint8_t note) {
 uint8_t get_free_voice() {
     uint32_t oldest_time = board_millis();
     uint8_t oldest_voice = 0;
+
     for (int i=0; i<NUM_VOICES; i++) {
-        if (VOICES[i] == 0) {
-            VOICES[i] = board_millis();
-            return i;
+        uint8_t n = (NEXT_VOICE+i)%NUM_VOICES;
+
+        if (VOICES[n] == 0) {
+            NEXT_VOICE = (n+1)%NUM_VOICES;
+            return n;
         }
+
         if (VOICES[i]<oldest_time) {
             oldest_time = VOICES[i];
             oldest_voice = i;
         }
     }
+
     return oldest_voice;
 }
 

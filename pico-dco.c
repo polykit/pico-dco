@@ -23,19 +23,22 @@ const uint16_t DIV_COUNTER = 1250;
 uint8_t RANGE_PWM_SLICES[NUM_VOICES];
 uint8_t NOTES[128];
 uint32_t VOICES[NUM_VOICES];
+uint8_t VOICE_NOTES[NUM_VOICES];
 uint8_t NEXT_VOICE = 0;
 uint32_t LED_BLINK_START = 0;
 PIO pio[2] = {pio0, pio1};
 uint8_t midi_serial_status = 0;
+uint16_t midi_pitch_bend = 0x2000, last_midi_pitch_bend = 0x2000;
 
 void init_sm(PIO pio, uint sm, uint offset, uint pin);
 void set_frequency(PIO pio, uint sm, float freq);
 float get_freq_from_midi_note(uint8_t note);
-void led_blinking_task(void);
+void led_blinking_task();
 uint8_t get_free_voice();
 void serial_midi_task();
 void note_on(uint8_t note, uint8_t velocity);
 void note_off(uint8_t note);
+void pitch_bend_task();
 
 int main() {
     board_init();
@@ -85,6 +88,7 @@ int main() {
             serial_midi_task();
         }
         led_blinking_task();
+        pitch_bend_task();
     }
 }
 
@@ -127,35 +131,47 @@ void tud_midi_rx_cb(uint8_t itf) {
 }
 
 void serial_midi_task() {
-    uint8_t note, velocity;
+    uint8_t lsb = 0, msb = 0;
     uint8_t data = uart_getc(uart0);
 
     LED_BLINK_START = board_millis();
     board_led_write(true);
 
+    // cc status
+    if (data >= 0xF0 && data <= 0xF7) {
+        midi_serial_status = 0;
+        return;
+    }
+
+    // realtime message
+    if (data >= 0xF8 && data <= 0xFF) {
+        return;
+    }
+
     if (data >= 0x80 && data <= 0xEF) {
         midi_serial_status = data;
-        if (midi_serial_status >= 0x80 && midi_serial_status <= 0x9F) {
-            note = uart_getc(uart0);
-            velocity = uart_getc(uart0);
-        }
-    } else {
-        if (midi_serial_status >= 0x80 && midi_serial_status <= 0x9F) {
-            note = data;
-            velocity = uart_getc(uart0);
-        }
+    }
+
+    if (midi_serial_status >= 0x80 && midi_serial_status <= 0x90 ||
+        midi_serial_status >= 0xE0 && midi_serial_status <= 0xEF) {
+        lsb = uart_getc(uart0);
+        msb = uart_getc(uart0);
     }
 
     if (midi_serial_status == (0x90 | (MIDI_CHANNEL-1))) {
-        if (velocity > 0) {
-            note_on(note, velocity);
+        if (msb > 0) {
+            note_on(lsb, msb);
         } else {
-            note_off(note);
+            note_off(lsb);
         }
     }
 
     if (midi_serial_status == (0x80 | (MIDI_CHANNEL-1))) {
-        note_off(note);
+        note_off(lsb);
+    }
+
+    if (midi_serial_status == (0xE0 | (MIDI_CHANNEL-1))) {
+        midi_pitch_bend = lsb | (msb<<7);
     }
 }
 
@@ -164,17 +180,20 @@ void note_on(uint8_t note, uint8_t velocity) {
     uint8_t voice_num = get_free_voice();
     NOTES[note] = voice_num;
     VOICES[voice_num] = board_millis();
+    VOICE_NOTES[voice_num] = note;
     float freq = get_freq_from_midi_note(note);
     set_frequency(pio[VOICE_TO_PIO[voice_num]], VOICE_TO_SM[voice_num], freq);
     // amplitude adjustment
     pwm_set_chan_level(RANGE_PWM_SLICES[voice_num], pwm_gpio_to_channel(RANGE_PINS[voice_num]), (int)(DIV_COUNTER*(freq*0.00025f-1/(100*freq))));
     // gate on
     gpio_put(GATE_PINS[voice_num], 1);
+    last_midi_pitch_bend = 0;
 }
 
 void note_off(uint8_t note) {
     // gate off
     gpio_put(GATE_PINS[NOTES[note]], 0);
+    VOICE_NOTES[NOTES[note]] = 0;
     VOICES[NOTES[note]] = 0;
     NOTES[note] = 0;
 }
@@ -200,7 +219,25 @@ uint8_t get_free_voice() {
     return oldest_voice;
 }
 
-void led_blinking_task(void) {
+void pitch_bend_task() {
+    if (midi_pitch_bend != last_midi_pitch_bend) {
+        last_midi_pitch_bend = midi_pitch_bend;
+
+        for (int i=0; i<NUM_VOICES; i++) {
+            if (VOICE_NOTES[i] > 0) {
+                float freq = get_freq_from_midi_note(VOICE_NOTES[i]);
+
+                if (midi_pitch_bend != 0x2000) {
+                    freq = freq-(freq*((0x2000-midi_pitch_bend)/67000.0f));
+                }
+
+                set_frequency(pio[VOICE_TO_PIO[i]], VOICE_TO_SM[i], freq);
+            }
+        }
+    }
+}
+
+void led_blinking_task() {
     if (board_millis() - LED_BLINK_START < 50) return;
     board_led_write(false);
 }

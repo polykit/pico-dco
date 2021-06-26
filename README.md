@@ -16,7 +16,7 @@ Press `BOOTSEL` button on the Pico while powering it with USB. Copy file `build/
 
 ## Usage
 
-After installing the Pico should register as USB MIDI device. Alternatively serial MIDI input is available. The DCO listens to note on/note off messages on MIDI channel 1.
+After installing the Pico should register as USB MIDI device. Alternatively serial MIDI input is available. The DCO listens to note on/note off messages on MIDI channel 1. Pitch bend is also supported.
 
 ## Known issues
 
@@ -41,3 +41,7 @@ https://qiita.com/jamjam/items/f2fdd5c072ff348fd809
 https://github.com/infovore/pico-example-midi
 
 https://learn.sparkfun.com/tutorials/midi-tutorial/all
+
+http://www.music-software-development.com/midi-tutorial.html
+
+http://midi.teragonaudio.com/tech/midispec/run.htm

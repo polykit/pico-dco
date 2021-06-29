@@ -35,6 +35,7 @@ void set_frequency(PIO pio, uint sm, float freq);
 float get_freq_from_midi_note(uint8_t note);
 void led_blinking_task();
 uint8_t get_free_voice();
+void usb_midi_task();
 void serial_midi_task();
 void note_on(uint8_t note, uint8_t velocity);
 void note_off(uint8_t note);
@@ -84,11 +85,10 @@ int main() {
 
     while (1) {
         tud_task();
-        if (uart_is_readable(uart0)) {
-            serial_midi_task();
-        }
-        led_blinking_task();
+        usb_midi_task();
+        serial_midi_task();
         pitch_bend_task();
+        led_blinking_task();
     }
 }
 
@@ -109,28 +109,36 @@ float get_freq_from_midi_note(uint8_t note) {
     return pow(2, (note-69)/12.0f) * BASE_NOTE;
 }
 
-void tud_midi_rx_cb(uint8_t itf) {   
+void usb_midi_task() {
+    if (tud_midi_available() < 4) return;
+
+    uint8_t buff[4];
+
     LED_BLINK_START = board_millis();
     board_led_write(true);
 
-    uint8_t buff[4] = {0};
-
-    if (tud_midi_available() > 3) {
-        if (tud_midi_receive(buff)) {
-            if (buff[1] == (0x90 | (MIDI_CHANNEL-1))) {
+    if (tud_midi_packet_read(buff)) {
+        if (buff[1] == (0x90 | (MIDI_CHANNEL-1))) {
+            if (buff[3] > 0) {
                 note_on(buff[2], buff[3]);
-            }
-
-            if (buff[1] == (0x80 | (MIDI_CHANNEL-1))) {
+            } else {
                 note_off(buff[2]);
             }
+        }
 
-            tud_midi_read_flush();
+        if (buff[1] == (0x80 | (MIDI_CHANNEL-1))) {
+            note_off(buff[2]);
+        }
+
+        if (buff[1] == (0xE0 | (MIDI_CHANNEL-1))) {
+            midi_pitch_bend = buff[2] | (buff[3]<<7);
         }
     }
 }
 
 void serial_midi_task() {
+    if (!uart_is_readable(uart0)) return;
+
     uint8_t lsb = 0, msb = 0;
     uint8_t data = uart_getc(uart0);
 

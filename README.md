@@ -10,17 +10,13 @@ This is how it sounds: [Ramp sample](https://soundcloud.com/polykit/pico-dco-ram
 
 ![Raspberry Pi Pico DCO PCB](pico-dco-pcb.png)
 
-## Installing (simple)
+## Installation (simple)
 
 Press `BOOTSEL` button on the Pico while powering it with USB. Copy file `build/pico-dco.uf2` onto the USB mass storage device.
 
 ## Usage
 
 After installing the Pico should register as USB MIDI device. Alternatively serial MIDI input is available. The DCO listens to note on/note off messages on MIDI channel 1. Pitch bend is also supported.
-
-## Known issues
-
-- USB MIDI apparently looses notes while playing. This seems to be caused by the TinyUSB library included in the Raspberry Pi Pico SDK. Hopefully this will be fixed in a future release.
 
 ## References
 

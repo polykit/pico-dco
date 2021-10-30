@@ -229,17 +229,15 @@ uint8_t get_free_voice() {
 }
 
 void pitch_bend_task() {
+    if (midi_pitch_bend == 0x2000) return;
+
     if (midi_pitch_bend != last_midi_pitch_bend) {
         last_midi_pitch_bend = midi_pitch_bend;
 
         for (int i=0; i<NUM_VOICES; i++) {
             if (VOICE_NOTES[i] > 0) {
                 float freq = get_freq_from_midi_note(VOICE_NOTES[i]);
-
-                if (midi_pitch_bend != 0x2000) {
-                    freq = freq-(freq*((0x2000-midi_pitch_bend)/67000.0f));
-                }
-
+                freq = freq-(freq*((0x2000-midi_pitch_bend)/67000.0f));
                 set_frequency(pio[VOICE_TO_PIO[i]], VOICE_TO_SM[i], freq);
             }
         }

@@ -224,6 +224,7 @@ uint8_t get_free_voice() {
         }
     }
 
+    NEXT_VOICE = (oldest_voice+1)%NUM_VOICES;
     return oldest_voice;
 }
 

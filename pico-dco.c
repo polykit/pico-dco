@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
@@ -13,6 +14,8 @@
 #define NUM_VOICES 6
 #define MIDI_CHANNEL 1
 
+uint STACK_NOTES = 1;
+float DETUNE_FACTOR = 0.01;
 const float BASE_NOTE = 440.0f;
 const uint8_t RESET_PINS[NUM_VOICES] = {13, 8, 12, 9, 11, 10};
 const uint8_t RANGE_PINS[NUM_VOICES] = {16, 19, 15, 18, 14, 17};
@@ -21,7 +24,6 @@ const uint8_t VOICE_TO_PIO[NUM_VOICES] = {0, 0, 0, 0, 1, 1};
 const uint8_t VOICE_TO_SM[NUM_VOICES] = {0, 1, 2, 3, 0, 1};
 const uint16_t DIV_COUNTER = 1250;
 uint8_t RANGE_PWM_SLICES[NUM_VOICES];
-uint8_t NOTES[128];
 uint32_t VOICES[NUM_VOICES];
 uint8_t VOICE_NOTES[NUM_VOICES];
 uint8_t NEXT_VOICE = 0;
@@ -184,26 +186,37 @@ void serial_midi_task() {
 }
 
 void note_on(uint8_t note, uint8_t velocity) {
-    if (NOTES[note] > 0) return; // note already playing
-    uint8_t voice_num = get_free_voice();
-    NOTES[note] = voice_num;
-    VOICES[voice_num] = board_millis();
-    VOICE_NOTES[voice_num] = note;
-    float freq = get_freq_from_midi_note(note);
-    set_frequency(pio[VOICE_TO_PIO[voice_num]], VOICE_TO_SM[voice_num], freq);
-    // amplitude adjustment
-    pwm_set_chan_level(RANGE_PWM_SLICES[voice_num], pwm_gpio_to_channel(RANGE_PINS[voice_num]), (int)(DIV_COUNTER*(freq*0.00025f-1/(100*freq))));
-    // gate on
-    gpio_put(GATE_PINS[voice_num], 1);
+    if (STACK_NOTES < 2) {
+        for (int i=0; i<NUM_VOICES; i++) {
+            if (VOICE_NOTES[i] == note) return; // note already playing
+        }
+    }
+    for (int i=0; i<STACK_NOTES; i++) {
+        uint8_t voice_num = get_free_voice();
+        VOICES[voice_num] = board_millis();
+        VOICE_NOTES[voice_num] = note;
+        float freq = get_freq_from_midi_note(note);
+        if (STACK_NOTES > 1) {
+            freq = freq + (rand()%10) * DETUNE_FACTOR;
+        }
+        set_frequency(pio[VOICE_TO_PIO[voice_num]], VOICE_TO_SM[voice_num], freq);
+        // amplitude adjustment
+        pwm_set_chan_level(RANGE_PWM_SLICES[voice_num], pwm_gpio_to_channel(RANGE_PINS[voice_num]), (int)(DIV_COUNTER*(freq*0.00025f-1/(100*freq))));
+        // gate on
+        gpio_put(GATE_PINS[voice_num], 1);
+    }
     last_midi_pitch_bend = 0;
 }
 
 void note_off(uint8_t note) {
     // gate off
-    gpio_put(GATE_PINS[NOTES[note]], 0);
-    VOICE_NOTES[NOTES[note]] = 0;
-    VOICES[NOTES[note]] = 0;
-    NOTES[note] = 0;
+    for (int i=0; i<NUM_VOICES; i++) {
+        if (VOICE_NOTES[i] == note) {
+            gpio_put(GATE_PINS[i], 0);
+            VOICE_NOTES[i] = 0;
+            VOICES[i] = 0;
+        }
+    }
 }
 
 uint8_t get_free_voice() {

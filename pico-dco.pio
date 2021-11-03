@@ -18,10 +18,10 @@ lp2:
 
 % c-sdk {
 void init_sm_pin(PIO pio, uint sm, uint offset, uint pin) {
-   pio_gpio_init(pio, pin);
-   pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
-   pio_sm_config c = frequency_program_get_default_config(offset);
-   sm_config_set_set_pins(&c, pin, 1);
-   pio_sm_init(pio, sm, offset, &c);
+    pio_gpio_init(pio, pin);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
+    pio_sm_config c = frequency_program_get_default_config(offset);
+    sm_config_set_set_pins(&c, pin, 1);
+    pio_sm_init(pio, sm, offset, &c);
 }
 %}

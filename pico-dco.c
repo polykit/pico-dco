@@ -14,8 +14,8 @@
 
 #define NUM_VOICES 6
 #define MIDI_CHANNEL 1
-//#define USE_ADC_STACK_VOICES // gpio 28 (adc 2)
-//#define USE_ADC_DETUNE       // gpio 27 (adc 1)
+#define USE_ADC_STACK_VOICES // gpio 28 (adc 2)
+#define USE_ADC_DETUNE       // gpio 27 (adc 1)
 
 uint STACK_VOICES = 1;
 float DETUNE = 0.0f, LAST_DETUNE = 0.0f;
@@ -34,6 +34,9 @@ uint32_t LED_BLINK_START = 0;
 PIO pio[2] = {pio0, pio1};
 uint8_t midi_serial_status = 0;
 uint16_t midi_pitch_bend = 0x2000, last_midi_pitch_bend = 0x2000;
+bool portamento = false;
+uint8_t portamento_time = 0, portamento_start = 0, portamento_stop = 0;
+float portamento_cur_freq = 0.0f;
 
 void init_sm(PIO pio, uint sm, uint offset, uint pin);
 void set_frequency(PIO pio, uint sm, float freq);
@@ -44,7 +47,7 @@ void usb_midi_task();
 void serial_midi_task();
 void note_on(uint8_t note, uint8_t velocity);
 void note_off(uint8_t note);
-void pitch_bend_task();
+void voice_task();
 void adc_task();
 long map(long x, long in_min, long in_max, long out_min, long out_max);
 
@@ -105,7 +108,7 @@ int main() {
         tud_task();
         usb_midi_task();
         serial_midi_task();
-        pitch_bend_task();
+        voice_task();
         #if defined(USE_ADC_STACK_VOICES) || defined(USE_ADC_DETUNE)
         adc_task();
         #endif
@@ -127,6 +130,23 @@ void set_frequency(PIO pio, uint sm, float freq) {
 }
 
 float get_freq_from_midi_note(uint8_t note) {
+    if (portamento && portamento_start != 0 && portamento_stop != 0) {
+        float freq1 = pow(2, (portamento_start-69)/12.0f) * BASE_NOTE;
+        float freq2 = pow(2, (portamento_stop-69)/12.0f) * BASE_NOTE;
+        if (portamento_cur_freq == 0) {
+            portamento_cur_freq = freq1;
+        } else {
+            if (freq1 < freq2) {
+                portamento_cur_freq += 1.0f/(portamento_time+1);
+                if (portamento_cur_freq > freq2) portamento_cur_freq = freq2;
+            } else {
+                portamento_cur_freq -= 1.0f/(portamento_time+1);
+                if (portamento_cur_freq < freq2) portamento_cur_freq = freq2;
+            }
+        }
+        return portamento_cur_freq;
+    }
+
     return pow(2, (note-69)/12.0f) * BASE_NOTE;
 }
 
@@ -154,6 +174,15 @@ void usb_midi_task() {
         if (buff[1] == (0xE0 | (MIDI_CHANNEL-1))) {
             midi_pitch_bend = buff[2] | (buff[3]<<7);
         }
+
+        if (midi_serial_status == (0xB0 | (MIDI_CHANNEL-1))) {
+            if (buff[2] == 5) { // portamento time
+                portamento_time = buff[3];
+            }
+            if (buff[2] == 65) { // portamento on/off
+                portamento = buff[3] > 63;
+            }
+        }
     }
 }
 
@@ -166,7 +195,7 @@ void serial_midi_task() {
     LED_BLINK_START = board_millis();
     board_led_write(true);
 
-    // cc status
+    // status
     if (data >= 0xF0 && data <= 0xF7) {
         midi_serial_status = 0;
         return;
@@ -182,6 +211,7 @@ void serial_midi_task() {
     }
 
     if (midi_serial_status >= 0x80 && midi_serial_status <= 0x90 ||
+        midi_serial_status >= 0xB0 && midi_serial_status <= 0xBF || // cc messages
         midi_serial_status >= 0xE0 && midi_serial_status <= 0xEF) {
         lsb = uart_getc(uart0);
         msb = uart_getc(uart0);
@@ -202,6 +232,15 @@ void serial_midi_task() {
     if (midi_serial_status == (0xE0 | (MIDI_CHANNEL-1))) {
         midi_pitch_bend = lsb | (msb<<7);
     }
+
+    if (midi_serial_status == (0xB0 | (MIDI_CHANNEL-1))) {
+        if (lsb == 5) { // portamento time
+            portamento_time = msb;
+        }
+        if (lsb == 65) { // portamento on/off
+             portamento = msb > 63;
+        }
+    }
 }
 
 void note_on(uint8_t note, uint8_t velocity) {
@@ -221,6 +260,14 @@ void note_on(uint8_t note, uint8_t velocity) {
         // gate on
         gpio_put(GATE_PINS[voice_num], 1);
     }
+    if (portamento) {
+        if (portamento_start == 0) {
+            portamento_start = note;
+            portamento_cur_freq = 0.0f;
+        } else {
+            portamento_stop = note;
+        }
+    }
     last_midi_pitch_bend = 0;
 }
 
@@ -233,6 +280,17 @@ void note_off(uint8_t note) {
             VOICES[i] = 0;
         }
     }
+    if (portamento_stop == note) {
+        portamento_start = portamento_stop;
+        portamento_stop = 0;
+        portamento_cur_freq = 0.0f;
+    }
+    /*
+    if (portamento_start == note) {
+        portamento_stop = 0;
+        portamento_cur_freq = 0.0f;
+    }
+    */
 }
 
 uint8_t get_free_voice() {
@@ -257,8 +315,8 @@ uint8_t get_free_voice() {
     return oldest_voice;
 }
 
-void pitch_bend_task() {
-    if (midi_pitch_bend != last_midi_pitch_bend || DETUNE != LAST_DETUNE) {
+void voice_task() {
+    if (midi_pitch_bend != last_midi_pitch_bend || DETUNE != LAST_DETUNE || portamento) {
         last_midi_pitch_bend = midi_pitch_bend;
         LAST_DETUNE = DETUNE;
 
@@ -267,6 +325,7 @@ void pitch_bend_task() {
                 float freq = get_freq_from_midi_note(VOICE_NOTES[i]) * (1 + (pow(-1, i) * DETUNE));
                 freq = freq-(freq*((0x2000-midi_pitch_bend)/67000.0f));
                 set_frequency(pio[VOICE_TO_PIO[i]], VOICE_TO_SM[i], freq);
+                pwm_set_chan_level(RANGE_PWM_SLICES[i], pwm_gpio_to_channel(RANGE_PINS[i]), (int)(DIV_COUNTER*(freq*0.00025f-1/(100*freq))));
             }
         }
     }

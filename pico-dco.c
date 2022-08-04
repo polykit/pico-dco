@@ -16,9 +16,16 @@
 #define MIDI_CHANNEL 1
 #define USE_ADC_STACK_VOICES // gpio 28 (adc 2)
 #define USE_ADC_DETUNE       // gpio 27 (adc 1)
+#define USE_ADC_FM           // gpio 26 (adc 0)
 
 uint STACK_VOICES = 1;
 float DETUNE = 0.0f, LAST_DETUNE = 0.0f;
+float FM_VALUE = 0.0f;  
+
+// Scale factor for FM. Controls how intense the effect is at maximum input voltage.
+// Units: Hertz.
+float FM_INTENSITY = 5.0f;          
+
 const float BASE_NOTE = 440.0f;
 const uint8_t RESET_PINS[NUM_VOICES] = {13, 8, 12, 9, 11, 10};
 const uint8_t RANGE_PINS[NUM_VOICES] = {16, 19, 15, 18, 14, 17};
@@ -89,13 +96,16 @@ int main() {
     }
 
     // adc init
-    #if defined(USE_ADC_STACK_VOICES) || defined(USE_ADC_DETUNE)
+    #if defined(USE_ADC_STACK_VOICES) || defined(USE_ADC_DETUNE) || defined(USE_ADC_FM) 
     adc_init();
     #ifdef USE_ADC_DETUNE
     adc_gpio_init(27);
     #endif
     #ifdef USE_ADC_STACK_VOICES
     adc_gpio_init(28);
+    #endif
+    #ifdef USE_ADC_FM
+    adc_gpio_init(26);
     #endif
     #endif
 
@@ -109,7 +119,7 @@ int main() {
         usb_midi_task();
         serial_midi_task();
         voice_task();
-        #if defined(USE_ADC_STACK_VOICES) || defined(USE_ADC_DETUNE)
+        #if defined(USE_ADC_STACK_VOICES) || defined(USE_ADC_DETUNE) || defined(USE_ADC_FM)
         adc_task();
         #endif
         led_blinking_task();
@@ -323,6 +333,9 @@ void voice_task() {
         for (int i=0; i<NUM_VOICES; i++) {
             if (VOICE_NOTES[i] > 0) {
                 float freq = get_freq_from_midi_note(VOICE_NOTES[i]) * (1 + (pow(-1, i) * DETUNE));
+
+                freq += FM_VALUE * FM_INTENSITY; // Add linear frequency modulation
+                
                 freq = freq-(freq*((0x2000-midi_pitch_bend)/67000.0f));
                 set_frequency(pio[VOICE_TO_PIO[i]], VOICE_TO_SM[i], freq);
                 pwm_set_chan_level(RANGE_PWM_SLICES[i], pwm_gpio_to_channel(RANGE_PINS[i]), (int)(DIV_COUNTER*(freq*0.00025f-1/(100*freq))));
@@ -345,6 +358,20 @@ void adc_task() {
     raw = adc_read();
     STACK_VOICES = map(raw, 0, 4000, 1, NUM_VOICES);
     #endif
+
+    #ifdef USE_ADC_FM
+
+    adc_select_input(0);
+    raw = adc_read();
+
+    // This input assumes a centre FM value of 2^11 = 2048, as the 
+    // ADCs are unsigned. This can be overcome in hardware with a fixed 
+    // voltage offset. The range of the Pico's ADCs is 3.3V, so a fixed 
+    // offset of 1.65V is needed.
+    int signed_raw = raw - (1 << 11);
+    FM_VALUE = (float) signed_raw / (float) (1 << 11);
+    #endif
+
 }
 
 long map(long x, long in_min, long in_max, long out_min, long out_max) {

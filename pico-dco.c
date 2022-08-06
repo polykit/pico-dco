@@ -200,8 +200,14 @@ void serial_midi_task() {
     if (!uart_is_readable(uart0)) return;
 
     uint8_t lsb = 0, msb = 0;
-    uint8_t data = uart_getc(uart0);
 
+    uint8_t data;
+    if (uart_is_readable(uart0)) {
+        data = uart_getc(uart0);
+    } else {
+        return;
+    }
+    
     LED_BLINK_START = board_millis();
     board_led_write(true);
 
@@ -223,8 +229,18 @@ void serial_midi_task() {
     if (midi_serial_status >= 0x80 && midi_serial_status <= 0x90 ||
         midi_serial_status >= 0xB0 && midi_serial_status <= 0xBF || // cc messages
         midi_serial_status >= 0xE0 && midi_serial_status <= 0xEF) {
-        lsb = uart_getc(uart0);
-        msb = uart_getc(uart0);
+
+        if (uart_is_readable(uart0)) {
+            lsb = uart_getc(uart0);
+        } else {
+            return;
+        }
+        
+        if (uart_is_readable(uart0)) {
+            msb = uart_getc(uart0);
+        } else {
+            return;
+        }
     }
 
     if (midi_serial_status == (0x90 | (MIDI_CHANNEL-1))) {
@@ -326,20 +342,15 @@ uint8_t get_free_voice() {
 }
 
 void voice_task() {
-    if (midi_pitch_bend != last_midi_pitch_bend || DETUNE != LAST_DETUNE || portamento) {
-        last_midi_pitch_bend = midi_pitch_bend;
-        LAST_DETUNE = DETUNE;
+    for (int i=0; i<NUM_VOICES; i++) {
+        if (VOICE_NOTES[i] > 0) {
+            float freq = get_freq_from_midi_note(VOICE_NOTES[i]) * (1 + (pow(-1, i) * DETUNE));
 
-        for (int i=0; i<NUM_VOICES; i++) {
-            if (VOICE_NOTES[i] > 0) {
-                float freq = get_freq_from_midi_note(VOICE_NOTES[i]) * (1 + (pow(-1, i) * DETUNE));
-
-                freq += FM_VALUE * FM_INTENSITY; // Add linear frequency modulation
-                
-                freq = freq-(freq*((0x2000-midi_pitch_bend)/67000.0f));
-                set_frequency(pio[VOICE_TO_PIO[i]], VOICE_TO_SM[i], freq);
-                pwm_set_chan_level(RANGE_PWM_SLICES[i], pwm_gpio_to_channel(RANGE_PINS[i]), (int)(DIV_COUNTER*(freq*0.00025f-1/(100*freq))));
-            }
+            freq += FM_VALUE * FM_INTENSITY; // Add linear frequency modulation
+            
+            freq = freq-(freq*((0x2000-midi_pitch_bend)/67000.0f));
+            set_frequency(pio[VOICE_TO_PIO[i]], VOICE_TO_SM[i], freq);
+            pwm_set_chan_level(RANGE_PWM_SLICES[i], pwm_gpio_to_channel(RANGE_PINS[i]), (int)(DIV_COUNTER*(freq*0.00025f-1/(100*freq))));
         }
     }
 }

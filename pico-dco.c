@@ -21,6 +21,7 @@
 uint STACK_VOICES = 1;
 float DETUNE = 0.0f, LAST_DETUNE = 0.0f;
 float FM_VALUE = 0.0f;  
+float LAST_FM = 0.0f;
 
 // Scale factor for FM. Controls how intense the effect is at maximum input voltage.
 // Units: Hertz.
@@ -36,6 +37,7 @@ const uint16_t DIV_COUNTER = 1250;
 uint8_t RANGE_PWM_SLICES[NUM_VOICES];
 uint32_t VOICES[NUM_VOICES];
 uint8_t VOICE_NOTES[NUM_VOICES];
+uint8_t VOICE_GATE[NUM_VOICES];
 uint8_t NEXT_VOICE = 0;
 uint32_t LED_BLINK_START = 0;
 PIO pio[2] = {pio0, pio1};
@@ -112,6 +114,7 @@ int main() {
     // init voices
     for (int i=0; i<NUM_VOICES; i++) {
         VOICES[i] = 0;
+        VOICE_GATE[i] = 0;
     }
 
     while (1) {
@@ -272,13 +275,16 @@ void serial_midi_task() {
 void note_on(uint8_t note, uint8_t velocity) {
     if (STACK_VOICES < 2) {
         for (int i=0; i<NUM_VOICES; i++) {
-            if (VOICE_NOTES[i] == note) return; // note already playing
+            if (VOICE_NOTES[i] == note && VOICE_GATE[i]) return; // note already playing
         }
     }
     for (int i=0; i<STACK_VOICES; i++) {
         uint8_t voice_num = get_free_voice();
+
         VOICES[voice_num] = board_millis();
         VOICE_NOTES[voice_num] = note;
+        VOICE_GATE[i] = 1;
+
         float freq = get_freq_from_midi_note(note) * (1 + (pow(-1, i) * DETUNE));
         set_frequency(pio[VOICE_TO_PIO[voice_num]], VOICE_TO_SM[voice_num], freq);
         // amplitude adjustment
@@ -302,8 +308,10 @@ void note_off(uint8_t note) {
     for (int i=0; i<NUM_VOICES; i++) {
         if (VOICE_NOTES[i] == note) {
             gpio_put(GATE_PINS[i], 0);
-            VOICE_NOTES[i] = 0;
+
+            //VOICE_NOTES[i] = 0;
             VOICES[i] = 0;
+            VOICE_GATE[i] = 0;
         }
     }
     if (portamento_stop == note) {
@@ -342,8 +350,14 @@ uint8_t get_free_voice() {
 }
 
 void voice_task() {
-    for (int i=0; i<NUM_VOICES; i++) {
-        if (VOICE_NOTES[i] > 0) {
+    if (midi_pitch_bend != last_midi_pitch_bend || DETUNE != LAST_DETUNE || portamento || FM_VALUE != LAST_FM) {
+
+        last_midi_pitch_bend = midi_pitch_bend;
+        LAST_DETUNE = DETUNE;
+        LAST_FM = FM_VALUE;
+
+        for (int i=0; i<NUM_VOICES; i++) {
+
             float freq = get_freq_from_midi_note(VOICE_NOTES[i]) * (1 + (pow(-1, i) * DETUNE));
 
             freq += FM_VALUE * FM_INTENSITY; // Add linear frequency modulation

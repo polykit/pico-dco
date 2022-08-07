@@ -35,9 +35,11 @@ const uint8_t VOICE_TO_PIO[NUM_VOICES] = {0, 0, 0, 0, 1, 1};
 const uint8_t VOICE_TO_SM[NUM_VOICES] = {0, 1, 2, 3, 0, 1};
 const uint16_t DIV_COUNTER = 1250;
 uint8_t RANGE_PWM_SLICES[NUM_VOICES];
+
 uint32_t VOICES[NUM_VOICES];
 uint8_t VOICE_NOTES[NUM_VOICES];
 uint8_t VOICE_GATE[NUM_VOICES];
+
 uint8_t NEXT_VOICE = 0;
 uint32_t LED_BLINK_START = 0;
 PIO pio[2] = {pio0, pio1};
@@ -204,12 +206,7 @@ void serial_midi_task() {
 
     uint8_t lsb = 0, msb = 0;
 
-    uint8_t data;
-    if (uart_is_readable(uart0)) {
-        data = uart_getc(uart0);
-    } else {
-        return;
-    }
+    uint8_t data = uart_getc(uart0);
     
     LED_BLINK_START = board_millis();
     board_led_write(true);
@@ -233,17 +230,8 @@ void serial_midi_task() {
         midi_serial_status >= 0xB0 && midi_serial_status <= 0xBF || // cc messages
         midi_serial_status >= 0xE0 && midi_serial_status <= 0xEF) {
 
-        if (uart_is_readable(uart0)) {
-            lsb = uart_getc(uart0);
-        } else {
-            return;
-        }
-        
-        if (uart_is_readable(uart0)) {
-            msb = uart_getc(uart0);
-        } else {
-            return;
-        }
+        lsb = uart_getc(uart0);
+        msb = uart_getc(uart0);
     }
 
     if (midi_serial_status == (0x90 | (MIDI_CHANNEL-1))) {
@@ -334,7 +322,7 @@ uint8_t get_free_voice() {
     for (int i=0; i<NUM_VOICES; i++) {
         uint8_t n = (NEXT_VOICE+i)%NUM_VOICES;
 
-        if (VOICES[n] == 0) {
+        if (VOICE_GATE[n] == 0) {
             NEXT_VOICE = (n+1)%NUM_VOICES;
             return n;
         }

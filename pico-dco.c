@@ -271,7 +271,7 @@ void note_on(uint8_t note, uint8_t velocity) {
 
         VOICES[voice_num] = board_millis();
         VOICE_NOTES[voice_num] = note;
-        VOICE_GATE[i] = 1;
+        VOICE_GATE[voice_num] = 1;
 
         float freq = get_freq_from_midi_note(note) * (1 + (pow(-1, i) * DETUNE));
         set_frequency(pio[VOICE_TO_PIO[voice_num]], VOICE_TO_SM[voice_num], freq);

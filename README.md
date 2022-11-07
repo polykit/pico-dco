@@ -21,6 +21,8 @@ I use the DCO in my Polykit-6 polyphonic synthesizer built, see https://www.yout
 
 ## Schematics and PCB
 
+![Raspberry Pi Pico DCO Soldered](pico-dco-soldered.jpg)
+
 ![Raspberry Pi Pico DCO](pico-dco.png)
 
 ![Raspberry Pi Pico DCO PCB](pico-dco-pcb.png)

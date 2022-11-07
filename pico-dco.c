@@ -16,9 +16,17 @@
 #define MIDI_CHANNEL 1
 #define USE_ADC_STACK_VOICES // gpio 28 (adc 2)
 #define USE_ADC_DETUNE       // gpio 27 (adc 1)
+#define USE_ADC_FM           // gpio 26 (adc 0)
 
 uint STACK_VOICES = 1;
 float DETUNE = 0.0f, LAST_DETUNE = 0.0f;
+float FM_VALUE = 0.0f;  
+float LAST_FM = 0.0f;
+
+// Scale factor for FM. Controls how intense the effect is at maximum input voltage.
+// Units: Hertz.
+float FM_INTENSITY = 5.0f;          
+
 const float BASE_NOTE = 440.0f;
 const uint8_t RESET_PINS[NUM_VOICES] = {13, 8, 12, 9, 11, 10};
 const uint8_t RANGE_PINS[NUM_VOICES] = {16, 19, 15, 18, 14, 17};
@@ -27,8 +35,11 @@ const uint8_t VOICE_TO_PIO[NUM_VOICES] = {0, 0, 0, 0, 1, 1};
 const uint8_t VOICE_TO_SM[NUM_VOICES] = {0, 1, 2, 3, 0, 1};
 const uint16_t DIV_COUNTER = 1250;
 uint8_t RANGE_PWM_SLICES[NUM_VOICES];
+
 uint32_t VOICES[NUM_VOICES];
 uint8_t VOICE_NOTES[NUM_VOICES];
+uint8_t VOICE_GATE[NUM_VOICES];
+
 uint8_t NEXT_VOICE = 0;
 uint32_t LED_BLINK_START = 0;
 PIO pio[2] = {pio0, pio1};
@@ -89,7 +100,7 @@ int main() {
     }
 
     // adc init
-    #if defined(USE_ADC_STACK_VOICES) || defined(USE_ADC_DETUNE)
+    #if defined(USE_ADC_STACK_VOICES) || defined(USE_ADC_DETUNE) || defined(USE_ADC_FM) 
     adc_init();
     #ifdef USE_ADC_DETUNE
     adc_gpio_init(27);
@@ -97,11 +108,15 @@ int main() {
     #ifdef USE_ADC_STACK_VOICES
     adc_gpio_init(28);
     #endif
+    #ifdef USE_ADC_FM
+    adc_gpio_init(26);
+    #endif
     #endif
 
     // init voices
     for (int i=0; i<NUM_VOICES; i++) {
         VOICES[i] = 0;
+        VOICE_GATE[i] = 0;
     }
 
     while (1) {
@@ -109,7 +124,7 @@ int main() {
         usb_midi_task();
         serial_midi_task();
         voice_task();
-        #if defined(USE_ADC_STACK_VOICES) || defined(USE_ADC_DETUNE)
+        #if defined(USE_ADC_STACK_VOICES) || defined(USE_ADC_DETUNE) || defined(USE_ADC_FM)
         adc_task();
         #endif
         led_blinking_task();
@@ -190,8 +205,9 @@ void serial_midi_task() {
     if (!uart_is_readable(uart0)) return;
 
     uint8_t lsb = 0, msb = 0;
-    uint8_t data = uart_getc(uart0);
 
+    uint8_t data = uart_getc(uart0);
+    
     LED_BLINK_START = board_millis();
     board_led_write(true);
 
@@ -213,6 +229,7 @@ void serial_midi_task() {
     if (midi_serial_status >= 0x80 && midi_serial_status <= 0x90 ||
         midi_serial_status >= 0xB0 && midi_serial_status <= 0xBF || // cc messages
         midi_serial_status >= 0xE0 && midi_serial_status <= 0xEF) {
+
         lsb = uart_getc(uart0);
         msb = uart_getc(uart0);
     }
@@ -246,13 +263,16 @@ void serial_midi_task() {
 void note_on(uint8_t note, uint8_t velocity) {
     if (STACK_VOICES < 2) {
         for (int i=0; i<NUM_VOICES; i++) {
-            if (VOICE_NOTES[i] == note) return; // note already playing
+            if (VOICE_NOTES[i] == note && VOICE_GATE[i]) return; // note already playing
         }
     }
     for (int i=0; i<STACK_VOICES; i++) {
         uint8_t voice_num = get_free_voice();
+
         VOICES[voice_num] = board_millis();
         VOICE_NOTES[voice_num] = note;
+        VOICE_GATE[voice_num] = 1;
+
         float freq = get_freq_from_midi_note(note) * (1 + (pow(-1, i) * DETUNE));
         set_frequency(pio[VOICE_TO_PIO[voice_num]], VOICE_TO_SM[voice_num], freq);
         // amplitude adjustment
@@ -276,8 +296,10 @@ void note_off(uint8_t note) {
     for (int i=0; i<NUM_VOICES; i++) {
         if (VOICE_NOTES[i] == note) {
             gpio_put(GATE_PINS[i], 0);
-            VOICE_NOTES[i] = 0;
+
+            //VOICE_NOTES[i] = 0;
             VOICES[i] = 0;
+            VOICE_GATE[i] = 0;
         }
     }
     if (portamento_stop == note) {
@@ -300,7 +322,7 @@ uint8_t get_free_voice() {
     for (int i=0; i<NUM_VOICES; i++) {
         uint8_t n = (NEXT_VOICE+i)%NUM_VOICES;
 
-        if (VOICES[n] == 0) {
+        if (VOICE_GATE[n] == 0) {
             NEXT_VOICE = (n+1)%NUM_VOICES;
             return n;
         }
@@ -316,17 +338,21 @@ uint8_t get_free_voice() {
 }
 
 void voice_task() {
-    if (midi_pitch_bend != last_midi_pitch_bend || DETUNE != LAST_DETUNE || portamento) {
+    if (midi_pitch_bend != last_midi_pitch_bend || DETUNE != LAST_DETUNE || portamento || FM_VALUE != LAST_FM) {
+
         last_midi_pitch_bend = midi_pitch_bend;
         LAST_DETUNE = DETUNE;
+        LAST_FM = FM_VALUE;
 
         for (int i=0; i<NUM_VOICES; i++) {
-            if (VOICE_NOTES[i] > 0) {
-                float freq = get_freq_from_midi_note(VOICE_NOTES[i]) * (1 + (pow(-1, i) * DETUNE));
-                freq = freq-(freq*((0x2000-midi_pitch_bend)/67000.0f));
-                set_frequency(pio[VOICE_TO_PIO[i]], VOICE_TO_SM[i], freq);
-                pwm_set_chan_level(RANGE_PWM_SLICES[i], pwm_gpio_to_channel(RANGE_PINS[i]), (int)(DIV_COUNTER*(freq*0.00025f-1/(100*freq))));
-            }
+
+            float freq = get_freq_from_midi_note(VOICE_NOTES[i]) * (1 + (pow(-1, i) * DETUNE));
+
+            freq += FM_VALUE * FM_INTENSITY; // Add linear frequency modulation
+            
+            freq = freq-(freq*((0x2000-midi_pitch_bend)/67000.0f));
+            set_frequency(pio[VOICE_TO_PIO[i]], VOICE_TO_SM[i], freq);
+            pwm_set_chan_level(RANGE_PWM_SLICES[i], pwm_gpio_to_channel(RANGE_PINS[i]), (int)(DIV_COUNTER*(freq*0.00025f-1/(100*freq))));
         }
     }
 }
@@ -345,6 +371,20 @@ void adc_task() {
     raw = adc_read();
     STACK_VOICES = map(raw, 0, 4000, 1, NUM_VOICES);
     #endif
+
+    #ifdef USE_ADC_FM
+
+    adc_select_input(0);
+    raw = adc_read();
+
+    // This input assumes a centre FM value of 2^11 = 2048, as the 
+    // ADCs are unsigned. This can be overcome in hardware with a fixed 
+    // voltage offset. The range of the Pico's ADCs is 3.3V, so a fixed 
+    // offset of 1.65V is needed.
+    int signed_raw = raw - (1 << 11);
+    FM_VALUE = (float) signed_raw / (float) (1 << 11);
+    #endif
+
 }
 
 long map(long x, long in_min, long in_max, long out_min, long out_max) {

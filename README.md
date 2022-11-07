@@ -8,6 +8,7 @@ This repository contains source code, schematics and PCB for a digitally control
 - Up to six voices
 - Voice stacking
 - Detuning of voices
+- Frequency modulation (FM)
 - Separate gate signal
 - DIN MIDI serial input
 - USB MIDI input
@@ -33,6 +34,16 @@ Press `BOOTSEL` button on the Pico while powering it with USB. Copy file `build/
 ## Usage
 
 After installing the Pico should register as USB MIDI device. Alternatively serial MIDI input is available. The DCO listens to note on/note off messages on MIDI channel 1. Pitch bend is also supported. Portamento can be enabled by MIDI CC message #65, portamento time can be adjusted by CC message #5.
+
+## Detuning, stacking and FM
+
+The build-in analog-to-digital converter can be used to modulate these parameters. You can add an external control voltage (0-3.3V) to that input pins. These features can be disabled by commenting (`//`) the following lines:
+
+```
+#define USE_ADC_STACK_VOICES // gpio 28 (adc 2)
+#define USE_ADC_DETUNE       // gpio 27 (adc 1)
+#define USE_ADC_FM           // gpio 26 (adc 0)
+```
 
 ## References
 

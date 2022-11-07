@@ -17,7 +17,7 @@ This repository contains source code, schematics and PCB for a digitally control
 
 This is how it sounds: [Ramp sample](https://soundcloud.com/polykit/pico-dco-ramp) [Pulse sample](https://soundcloud.com/polykit/pico-dco-pulse) [Polyphonic sample](https://soundcloud.com/polykit/pico-dco-polyphonic)
 
-I use the DCO in my Polykit-6 polyphonic synthesizer built, see https://www.youtube.com/watch?v=vj-DSh6yfM0 and https://www.youtube.com/watch?v=go1mErOdtsU
+I use the DCO in my Polykit-6 polyphonic synthesizer, see https://www.youtube.com/watch?v=vj-DSh6yfM0 and https://www.youtube.com/watch?v=go1mErOdtsU
 
 ## Schematics and PCB
 

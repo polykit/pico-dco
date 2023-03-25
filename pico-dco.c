@@ -226,7 +226,7 @@ void serial_midi_task() {
         midi_serial_status = data;
     }
 
-    if (midi_serial_status >= 0x80 && midi_serial_status <= 0x90 ||
+    if (midi_serial_status >= 0x80 && midi_serial_status <= 0x9F ||
         midi_serial_status >= 0xB0 && midi_serial_status <= 0xBF || // cc messages
         midi_serial_status >= 0xE0 && midi_serial_status <= 0xEF) {
 
